@@ -91,7 +91,7 @@ func main() {
 	fmt.Println("Bot working")
 
 	// goroutine for checkLiveStream
-	// go checkLiveStream(session)
+	go checkLiveStream(session)
 
 	// Kill discord bot
 	sc := make(chan os.Signal, 1)
