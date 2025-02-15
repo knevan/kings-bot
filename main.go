@@ -233,18 +233,23 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 			matchedWord := m.Content
 
 			// Reply and Response spam chat with reason why
-			responseSpam := fmt.Sprintf("Spam message detected: **\"%s\"**.", matchedWord)
+			responseSpam := fmt.Sprintf("**%s**", matchedWord)
 
 			// Embed message for simplicity and better view
 			embed := &discordgo.MessageEmbed{
-				Title:       "Spam Message Detected",
-				Description: responseSpam,
-				Color:       0xff0000,
+				Title: "Spam Message Detected",
+				// Description: responseSpam,
+				Color: 0xff0000,
 				Fields: []*discordgo.MessageEmbedField{
 					{
-						Name:   "User",
-						Value:  m.Author.Username,
+						Name:   "Banned User",
+						Value:  fmt.Sprintf("%s (Username: %s)", m.Author.Mention(), m.Author.Username),
 						Inline: true,
+					},
+					{
+						Name:   "Reason",
+						Value:  responseSpam,
+						Inline: false,
 					},
 				},
 			}
@@ -277,7 +282,7 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 			// Banned spam chats members
 			guildID := m.GuildID
-			userID := m.Author.ID
+			// userID := m.Author.ID
 			userName := m.Author.Username
 
 			if guildID == "" {
@@ -285,7 +290,7 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 				return
 			}
 
-			// Tagging username
+			// Banned spam user from server
 			err = s.GuildBanCreateWithReason(m.GuildID, m.Author.ID, "spamming detected", 0)
 			if err != nil {
 				fmt.Printf("Error when banning user %s: %v\n\n", userName, err)
@@ -293,13 +298,14 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Printf("User %s has beed banned for spamming\n", userName)
 
 				// Send message to channel about banned member
-				banMessageChannel := fmt.Sprintf("User <@%s> (%s) has been banned from server", userID, userName)
-				_, err := s.ChannelMessageSend(m.ChannelID, banMessageChannel)
-				if err != nil {
-					fmt.Println("Error when sending banned message:", err)
-				} else {
-					fmt.Println("Success sending banned message")
-				}
+				/*
+					banMessageChannel := fmt.Sprintf("User <@%s> (%s) has been banned from server", userID, userName)
+					_, err := s.ChannelMessageSend(m.ChannelID, banMessageChannel)
+					if err != nil {
+						fmt.Println("Error when sending banned message:", err)
+					} else {
+						fmt.Println("Success sending banned message")
+					}*/
 			}
 			return
 		}
