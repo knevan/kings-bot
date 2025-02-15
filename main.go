@@ -22,17 +22,17 @@ var (
 	YoutubeChannelID string
 	DiscordChannelID string
 	VerifyToken      string
-	Port             string = "8080"
+	Port             = "8080"
 	// checkInterval           = 20 * time.Second
 	spamRegexPattern = []string{
-		`(?i)\b(?:free|get|claim|gift)[\s\+](?:steam|gift|key|cards)[\s\+](giveaway|for free|gratis)\b`,
-		`(?i)\b(?:free|get|claim|gift)[\s\+](?:steam|gift|key|cards)\b`,
-		`(?i)\b(?:gift|steam)[\s\+](?:cards|\$50|50\$)\b`,
-		`(?i)\b(?:free|get|claim)[\s\+](?:steam|gift|key)[\s\+](?:giveaway|for free|gratis)\b`, // Giveaway Scam (Diperbaiki dan dipersempit)
-		`(?i)\btrade\s*offer\b`,
-		`(?i)\b(?:free|best|onlyfans|teen)[\s\+](?:porn|NSFW|hub|onlyfans|teen)\b`,
-		`(?i)\b(?:stake|airdrop)[\s\+](?:stake|airdrop)\b`,
-		`(?i)\b(crypto[\s\+]giveaway|eth[\s\+]giveaway|btc[\s\+]giveaway)\b`,
+		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)(?:\s*\+\s*|\s*-\s*|\s*)?(giveaway)\b`,
+		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)\b`,
+		`(?i)\b(?:gift|steam)(?:\s*\+\s*|\s*-\s*|\s*)?(?:cards?|\$50|50\$)\b`,
+		`(?i)\b(?:free|best|onlyfans|teen|NSFW|sex|leaks?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|NSFW|hub|onlyfans|teen|sex|leaks?)\b`,
+		`(?i)\b(?:free|hot|nudes?|hentai)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|pussys?|nudes?)\b`,
+		`(?i)\b(?:stake|airdrop|claim|rewards?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:stake|airdrop|claim|rewards?)\b`,
+		`(?i)\b(?:nitro)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway)`,
+		`(?i)\b(?:crypto|casino|fasts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway|payouts?|luck|catch)\b`,
 	}
 	// Slice to store regex pattern
 	compiledRegex []*regexp.Regexp
@@ -128,33 +128,41 @@ func main() {
 
 // Handle Webhook
 func handleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.Session) {
-	log.Printf("📥 Received webhook request: %s %s", r.Method, r.URL.Path)
+	log.Printf("Received webhook request: %s %s", r.Method, r.URL.Path)
 
-	// Handle verification Error
+	// Handle verification GET request
 	if r.Method == "GET" {
 		challenge := r.URL.Query().Get("hub.challenge")
 		verifyToken := r.URL.Query().Get("hub.verify_token")
 
-		log.Printf("🔍 Verification attempt - Token: %s, Challenge: %s", verifyToken, challenge)
+		log.Printf("Verification attempt - Token: %s, Challenge: %s", verifyToken, challenge)
 		if verifyToken != VerifyToken {
-			log.Printf("❌ Invalid verify token received: %s", verifyToken)
+			log.Printf("Invalid verify token received: %s", verifyToken)
 			http.Error(w, "Invalid verification token.", http.StatusForbidden)
 			return
 		}
 
-		log.Printf("✅ Verification successful, responding with challenge: %s", challenge)
-		w.Write([]byte(challenge))
-		return
+		log.Printf("Verification successful, responding with challenge: %s", challenge)
+
+		if _, err := w.Write([]byte(challenge)); err != nil {
+			log.Printf("Error writing challenge response: %v", err)
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
+		}
 	}
 
-	// Handle notification
+	// Handle notification POST request
 	if r.Method == "POST" {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "Error reading body", http.StatusInternalServerError)
 			return
 		}
-		defer r.Body.Close()
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Printf("Error closing body: %v", err)
+			}
+		}()
 
 		var notification YoutubeNotification
 		if err := xml.Unmarshal(body, &notification); err != nil {
@@ -193,7 +201,12 @@ func subscribeYoutubeChannel(channelID string) error {
 	if err != nil {
 		return fmt.Errorf("error subscribing: %v", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Error closing body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("something error in here: %d", resp.StatusCode)
@@ -215,13 +228,46 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if regex.MatchString(m.Content) {
 			log.Printf("Spam detected in message from %s", m.Author.Username)
 
-			deleteMessageContent := m.Content
+			// Find the specific spam message
+			// matchedWord := regex.FindString(m.Content)
+			matchedWord := m.Content
+
 			// Reply and Response spam chat with reason why
-			responseSpam := fmt.Sprintf("Spam message detected: **\"%s\"**.", deleteMessageContent)
-			_, err := s.ChannelMessageSendReply(m.ChannelID, responseSpam, m.Reference())
+			responseSpam := fmt.Sprintf("Spam message detected: **\"%s\"**.", matchedWord)
+
+			// Embed message for simplicity and better view
+			embed := &discordgo.MessageEmbed{
+				Title:       "Spam Message Detected",
+				Description: responseSpam,
+				Color:       0xff0000,
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Name:   "User",
+						Value:  m.Author.Username,
+						Inline: true,
+					},
+				},
+			}
+
+			msgSend := &discordgo.MessageSend{
+				Embed: embed,
+				AllowedMentions: &discordgo.MessageAllowedMentions{
+					Roles: []string{},
+					Users: []string{},
+					Parse: []discordgo.AllowedMentionType{},
+				},
+				Reference: m.Reference(),
+			}
+
+			_, err := s.ChannelMessageSendComplex(m.ChannelID, msgSend)
 			if err != nil {
 				fmt.Println("Failed to send delete message", err)
 			}
+
+			/*_, err := s.ChannelMessageSendReply(m.ChannelID, responseSpam, m.Reference())
+			if err != nil {
+				fmt.Println("Failed to send delete message", err)
+			}*/
 
 			// Delete spam chat from channel
 			err = s.ChannelMessageDelete(m.ChannelID, m.ID)
