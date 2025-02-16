@@ -1,40 +1,55 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
 	"syscall"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
 var (
-	Token            string
-	YoutubeAPIKey    string
+	Token string
+	// YoutubeChannelID YoutubeAPIKey    string
 	YoutubeChannelID string
 	DiscordChannelID string
-	checkInterval    = 20 * time.Second
+	VerifyToken      string
+	Port             = "8080"
+	// checkInterval           = 20 * time.Second
 	spamRegexPattern = []string{
-		`(?i)\b(?:free|get|claim|gift)[\s\+](?:steam|gift|key|cards)[\s\+](giveaway|for free|gratis)\b`,
-		`(?i)\b(?:free|get|claim|gift)[\s\+](?:steam|gift|key|cards)\b`,
-		`(?i)\bgift[\s-]*cards?\b`,
-		`(?i)\b(?:free|get|claim)[\s\+](?:steam|gift|key)[\s\+](?:giveaway|for free|gratis)\b`, // Giveaway Scam (Diperbaiki dan dipersempit)
-		`(?i)\btrade\s*offer\b`,
-		`(?i)\b(?:free|best|onlyfans|teen)[\s\+](?:porn|NSFW|hub|onlyfans|teen)\b`,
-		`(?i)\b(?:stake|airdrop)[\s\+](?:stake|airdrop)\b`,
-		`(?i)\bfree\s+\$\d+\b`,
-		`(?i)\b(crypto\s+giveaway|eth\s+giveaway|btc\s+giveaway)\b`,
+		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)(?:\s*\+\s*|\s*-\s*|\s*)?(giveaway)\b`,
+		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)\b`,
+		`(?i)\b(?:gift|steam)(?:\s*\+\s*|\s*-\s*|\s*)?(?:cards?|\$50|50\$)\b`,
+		`(?i)\b(?:free|best|onlyfans|teen|NSFW|sex|leaks?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|NSFW|hub|onlyfans|teen|sex|leaks?)\b`,
+		`(?i)\b(?:free|hot|nudes?|hentai)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|pussys?|nudes?)\b`,
+		`(?i)\b(?:stake|airdrop|claim|rewards?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:stake|airdrop|claim|rewards?)\b`,
+		`(?i)\b(?:nitro)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway)`,
+		`(?i)\b(?:crypto|casino|fasts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway|payouts?|luck|catch)\b`,
 	}
 	// Slice to store regex pattern
 	compiledRegex []*regexp.Regexp
 )
+
+// YoutubeNotification struct for xml payload from YouTube
+type YoutubeNotification struct {
+	XMLName xml.Name `xml:"feed"`
+	Entry   struct {
+		VideoID   string `xml:"videoID"`
+		ChannelID string `xml:"channelID"`
+		Title     string `xml:"title"`
+		Status    struct {
+			Type string `xml:"type,attr"`
+		} `xml:"status"`
+	} `xml:"entry"`
+}
 
 // Precompile regex pattern during initialization
 func init() {
@@ -48,31 +63,19 @@ func init() {
 	}
 }
 
-type LiveStreamResponse struct {
-	Items []struct {
-		Id struct {
-			VideoId string `json:"videoId"`
-		} `json:"id"`
-		Snippet struct {
-			LiveBroadcastContent string `json:"liveBroadcastContent"`
-			Title                string `json:"title"`
-		} `json:"snippet"`
-	} `json:"items"`
-}
-
 func main() {
 	// Load environment variables from .env file
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("Error loading .env file, using environment variables directly")
-		// If .env fails to load, it will try to get from system env variables anyway.
-		// This is for deployment environments where .env file is not used.
 	}
 
+	// Get Token from .env file
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
-	YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
+	// YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
 	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
 	DiscordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
+	VerifyToken = os.Getenv("VERIFY_TOKEN")
 
 	// Discord bot Session
 	session, err := discordgo.New("Bot " + Token)
@@ -81,8 +84,10 @@ func main() {
 		return
 	}
 
+	// Handler for Spam Message
 	session.AddHandler(deleteSpamMessage)
 
+	// Connecting bot with bot token
 	err = session.Open()
 	if err != nil {
 		log.Println("Error when connecting", err)
@@ -90,81 +95,127 @@ func main() {
 	}
 	fmt.Println("Bot working")
 
+	// Setup http server for YouTube Webhook
+	http.HandleFunc("/youtube/webhook", func(w http.ResponseWriter, r *http.Request) {
+		handleYoutubeWebhook(w, r, session)
+	})
+
+	// Subscribe youtube channel
+	err = subscribeYoutubeChannel(YoutubeChannelID)
+	if err != nil {
+		log.Printf("Error subscribing channel: %v", err)
+	}
+
 	// goroutine for checkLiveStream
-	go checkLiveStream(session)
+	go func() {
+		log.Printf("Starting webhook server on %s", Port)
+		if err := http.ListenAndServe(":"+Port, nil); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	// Kill discord bot
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
+	// Cleanup and Close bot session
 	err = session.Close()
 	if err != nil {
 		log.Println("Cant kill discord")
 	}
 }
 
-// Function for check livestream
-func checkLiveStream(s *discordgo.Session) {
-	isCurrentLive := false
-	client := &http.Client{Timeout: 19 * time.Second}
+// Handle Webhook
+func handleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.Session) {
+	log.Printf("Received webhook request: %s %s", r.Method, r.URL.Path)
 
-	for {
-		apiUrl := fmt.Sprintf("https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=%s&eventType=live&type=video&key=%s",
-			YoutubeChannelID,
-			YoutubeAPIKey,
-		)
-		respond, err := client.Get(apiUrl)
-		if err != nil {
-			log.Printf("Error when calling YoutubeAPI: %v, URL: %s", err, apiUrl)
-			time.Sleep(checkInterval)
-			continue
-		}
+	// Handle verification GET request
+	if r.Method == "GET" {
+		challenge := r.URL.Query().Get("hub.challenge")
+		verifyToken := r.URL.Query().Get("hub.verify_token")
 
-		if respond.StatusCode != http.StatusOK {
-			log.Printf("YoutubeAPI request failed, status code: %d, URL: %s", respond.StatusCode, apiUrl)
-			time.Sleep(checkInterval)
-			continue
-		}
-
-		var searchResponse LiveStreamResponse
-		if err := json.NewDecoder(respond.Body).Decode(&searchResponse); err != nil {
-			fmt.Println("Error when decoding Youtube API response", err)
-			err := respond.Body.Close()
-			if err != nil {
-				return
-			}
-			time.Sleep(checkInterval)
-			continue
-		}
-		err = respond.Body.Close()
-		if err != nil {
+		log.Printf("Verification attempt - Token: %s, Challenge: %s", verifyToken, challenge)
+		if verifyToken != VerifyToken {
+			log.Printf("Invalid verify token received: %s", verifyToken)
+			http.Error(w, "Invalid verification token.", http.StatusForbidden)
 			return
 		}
 
-		isLiveNow := len(searchResponse.Items) > 0
+		log.Printf("Verification successful, responding with challenge: %s", challenge)
 
-		if isLiveNow && !isCurrentLive {
-			video := searchResponse.Items[0]
-			liveVideoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.Id.VideoId)
-			messageLive := fmt.Sprintf(" Geeons %s %s",
-				video.Snippet.LiveBroadcastContent,
-				video.Snippet.Title,
-				liveVideoURL)
+		if _, err := w.Write([]byte(challenge)); err != nil {
+			log.Printf("Error writing challenge response: %v", err)
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
+		}
+	}
 
-			_, err := s.ChannelMessageSend(DiscordChannelID, messageLive)
-			if err != nil {
-				fmt.Println("Error when sending message", err)
-			} else {
-				fmt.Println("Live stream detected, send message to Discord channel")
+	// Handle notification POST request
+	if r.Method == "POST" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Error reading body", http.StatusInternalServerError)
+			return
+		}
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Printf("Error closing body: %v", err)
 			}
+		}()
+
+		var notification YoutubeNotification
+		if err := xml.Unmarshal(body, &notification); err != nil {
+			http.Error(w, "Error parsing XML youtube notification", http.StatusBadRequest)
 		}
 
-		isCurrentLive = isLiveNow
-		time.Sleep(checkInterval)
+		// Check if channel start Livestream
+		if notification.Entry.Status.Type == "Live" {
+			message := fmt.Sprintf("\\n%s\\nhttps://youtube.com/watch?v=%s",
+				notification.Entry.Title,
+				notification.Entry.VideoID)
+
+			_, err = s.ChannelMessageSend(DiscordChannelID, message)
+			if err != nil {
+				log.Printf("Error Sending Discord Message: %v", err)
+			} else {
+				log.Printf("%s", notification.Entry.Title)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
+func subscribeYoutubeChannel(channelID string) error {
+	callbackURL := fmt.Sprintf("https://5506-180-252-118-216.ngrok-free.app/youtube/webhook")
+	topicURL := fmt.Sprintf("https://www.youtube.com/xml/feeds/videos.xml?channel_id=%s", channelID)
+
+	values := url.Values{}
+	values.Set("hub.callback", callbackURL)
+	values.Set("hub.topic", topicURL)
+	values.Set("hub.verify_token", VerifyToken)
+	values.Set("hub.mode", "subscribe")
+	// values.Set("hub.lease_seconds", "432000")
+
+	resp, err := http.PostForm("https://pubsubhubbub.appspot.com/subscribe", values)
+	if err != nil {
+		return fmt.Errorf("error subscribing: %v", err)
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Error closing body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("something error in here: %d", resp.StatusCode)
+	}
+	log.Printf("Success subscribe to channel: %s", channelID)
+	return nil
+}
+
+// Function to detect message and flagging spam message
 func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
@@ -172,26 +223,66 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	fmt.Println("Message Recieved:", m.Content)
 
+	// Loop regex pattern
 	for _, regex := range compiledRegex {
 		if regex.MatchString(m.Content) {
 			log.Printf("Spam detected in message from %s", m.Author.Username)
 
-			deleteMessageContent := m.Content
+			// Find the specific spam message
+			// matchedWord := regex.FindString(m.Content)
+			matchedWord := m.Content
 
-			responseSpam := fmt.Sprintf("Spam message detected: \"%s\".", deleteMessageContent)
-			_, err := s.ChannelMessageSendReply(m.ChannelID, responseSpam, m.Reference())
+			// Reply and Response spam chat with reason why
+			responseSpam := fmt.Sprintf("**%s**", matchedWord)
+
+			// Embed message for simplicity and better view
+			embed := &discordgo.MessageEmbed{
+				Title: "Spam Message Detected",
+				// Description: responseSpam,
+				Color: 0xff0000,
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Name:   "Banned User",
+						Value:  fmt.Sprintf("%s (Username: %s)", m.Author.Mention(), m.Author.Username),
+						Inline: true,
+					},
+					{
+						Name:   "Reason",
+						Value:  responseSpam,
+						Inline: false,
+					},
+				},
+			}
+
+			msgSend := &discordgo.MessageSend{
+				Embed: embed,
+				AllowedMentions: &discordgo.MessageAllowedMentions{
+					Roles: []string{},
+					Users: []string{},
+					Parse: []discordgo.AllowedMentionType{},
+				},
+				Reference: m.Reference(),
+			}
+
+			_, err := s.ChannelMessageSendComplex(m.ChannelID, msgSend)
 			if err != nil {
 				fmt.Println("Failed to send delete message", err)
 			}
 
+			/*_, err := s.ChannelMessageSendReply(m.ChannelID, responseSpam, m.Reference())
+			if err != nil {
+				fmt.Println("Failed to send delete message", err)
+			}*/
+
+			// Delete spam chat from channel
 			err = s.ChannelMessageDelete(m.ChannelID, m.ID)
 			if err != nil {
 				fmt.Println("Error when trying to delete message", err)
 			}
 
-			// Banned spam chats member
+			// Banned spam chats members
 			guildID := m.GuildID
-			userID := m.Author.ID
+			// userID := m.Author.ID
 			userName := m.Author.Username
 
 			if guildID == "" {
@@ -199,6 +290,7 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 				return
 			}
 
+			// Banned spam user from server
 			err = s.GuildBanCreateWithReason(m.GuildID, m.Author.ID, "spamming detected", 0)
 			if err != nil {
 				fmt.Printf("Error when banning user %s: %v\n\n", userName, err)
@@ -206,13 +298,14 @@ func deleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Printf("User %s has beed banned for spamming\n", userName)
 
 				// Send message to channel about banned member
-				banMessageChannel := fmt.Sprintf("User <@%s> (%s) has been banned from server", userID, userName)
-				_, err := s.ChannelMessageSend(m.ChannelID, banMessageChannel)
-				if err != nil {
-					fmt.Println("Error when sending banned message:", err)
-				} else {
-					fmt.Println("Success sending banned message")
-				}
+				/*
+					banMessageChannel := fmt.Sprintf("User <@%s> (%s) has been banned from server", userID, userName)
+					_, err := s.ChannelMessageSend(m.ChannelID, banMessageChannel)
+					if err != nil {
+						fmt.Println("Error when sending banned message:", err)
+					} else {
+						fmt.Println("Success sending banned message")
+					}*/
 			}
 			return
 		}
