@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	Token string
-	// YoutubeChannelID YoutubeAPIKey    string
+	Token            string
 	YoutubeChannelID string
 	DiscordChannelID string
 	VerifyToken      string
+	YoutubeAPIKey    string
 	Port             = "8080"
 )
 
@@ -34,7 +34,7 @@ func main() {
 
 	// Get Token from .env file
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
-	// YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
+	YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
 	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
 	DiscordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
@@ -61,7 +61,7 @@ func main() {
 	fmt.Println("Bot working")
 
 	// Initialize Youtube Module
-	youtube.Init(YoutubeChannelID, DiscordChannelID, VerifyToken)
+	youtube.Init(YoutubeChannelID, VerifyToken, YoutubeAPIKey)
 
 	// Setup http server for YouTube Webhook
 	http.HandleFunc("/youtube/webhook", func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func main() {
 		}
 	}()
 
-	ticker := time.NewTicker(420 * time.Second)
+	ticker := time.NewTicker(345600 * time.Second)
 	go func() {
 		for range ticker.C {
 			if err := youtube.SubscribeYoutubeChannel(YoutubeChannelID); err != nil {
