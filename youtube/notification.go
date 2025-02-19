@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"google.golang.org/api/option"
@@ -19,20 +21,29 @@ var (
 	// discordChannel string
 	verifyToken   string
 	youtubeAPIKey string
+
+	inMemoryCache       = make(map[string]time.Time)
+	cacheMutex          sync.Mutex
+	cacheExpirationTime = 8 * time.Hour
 )
 
 // Notification XMLFeed Notification YoutubeNotification struct for xml payload from YouTube
 type Notification struct {
 	XMLName xml.Name `xml:"feed"`
-	Entry   struct {
-		VideoID   string `xml:"videoID"`
-		ChannelID string `xml:"channelID"`
-		Title     string `xml:"title"`
-	} `xml:"entry"`
+	Title   string   `xml:"title"`
+	Updated string   `xml:"updated"`
+	Entry   Entry    `xml:"entry"`
+}
+
+type Entry struct {
+	ID        string `xml:"id"`
+	VideoID   string `xml:"videoId"`
+	ChannelID string `xml:"channelId"`
+	Title     string `xml:"title"`
 }
 
 // Init initializes the YouTube module
-func Init(youtubeChannelID string, discordChannelID string, verifyTokenValue string, youtubeKey string) {
+func Init(youtubeChannelID string, verifyTokenValue string, youtubeKey string) {
 	channelID = youtubeChannelID
 	// discordChannel = discordChannelID
 	verifyToken = verifyTokenValue
@@ -84,29 +95,34 @@ func HandleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.S
 
 		log.Printf("Received YouTube notification: %+v", notification)
 
-		live, err := isLiveStream(notification.Entry.VideoID)
-		if err != nil {
-			log.Printf("Error checking live status: %v", err)
-		}
-
-		if live {
-			message := fmt.Sprintf("@everyone %s is live! Watch here: https://www.youtube.com/watch?v=%s",
-				notification.Entry.Title, notification.Entry.VideoID)
-			_, err := s.ChannelMessageSend(channelID, message)
+		if !alreadyProcessedVideo(notification.Entry.VideoID) {
+			live, err := isLiveStream(notification.Entry.VideoID)
 			if err != nil {
-				log.Printf("Error sending Discord message: %v", err)
+				log.Printf("Error checking live status: %v", err)
+			}
+
+			if live {
+				message := fmt.Sprintf("@everyone %s is live! Watch here: https://www.youtube.com/watch?v=%s",
+					notification.Entry.Title, notification.Entry.VideoID)
+				_, err := s.ChannelMessageSend(channelID, message)
+				if err != nil {
+					log.Printf("Error sending Discord message: %v", err)
+				} else {
+					log.Printf("Sent Discord message: %s", notification.Entry.Title)
+					markVideoAsProcessed(notification.Entry.VideoID)
+				}
 			} else {
-				log.Printf("Sent Discord message: %s", notification.Entry.Title)
+				log.Printf("Video %s is not a live, skipping notification.", notification.Entry.VideoID)
 			}
 		} else {
-			log.Printf("Notification for video %s is not a livestream; ignoring or handling as needed.", notification.Entry.VideoID)
+			log.Printf("Video %s has already been processed, skipping notification.", notification.Entry.VideoID)
 		}
-
 		w.WriteHeader(http.StatusOK)
 	}
 }
 
 func isLiveStream(videoID string) (bool, error) {
+	log.Printf("Checking live status for video ID: %s", videoID)
 	ctx := context.Background()
 	service, err := youtube.NewService(ctx, option.WithAPIKey(youtubeAPIKey))
 	if err != nil {
@@ -124,8 +140,27 @@ func isLiveStream(videoID string) (bool, error) {
 	}
 
 	liveStatus := resp.Items[0].Snippet.LiveBroadcastContent
-	log.Printf("Live status: %s", liveStatus)
-	return liveStatus == "live" || liveStatus == "upcoming", nil
+	log.Printf("Live status for video: %s", liveStatus)
+	return liveStatus == "live", nil
+}
+
+func alreadyProcessedVideo(videoID string) bool {
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+	if t, exists := inMemoryCache[videoID]; exists {
+		if time.Since(t) < cacheExpirationTime {
+			return true
+		}
+		delete(inMemoryCache, videoID)
+	}
+	inMemoryCache[videoID] = time.Now()
+	return false
+}
+
+func markVideoAsProcessed(videoID string) {
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+	inMemoryCache[videoID] = time.Now()
 }
 
 func SubscribeYoutubeChannel(channelID string) error {
