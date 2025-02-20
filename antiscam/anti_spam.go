@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 var (
+	banLogChannelID string
+
 	// Regex pattern for reducing false positive
 	spamRegexPattern = []string{
 		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)(?:\s*\+\s*|\s*-\s*|\s*)?(giveaway)\b`,
@@ -25,7 +28,9 @@ var (
 )
 
 // Init Precompile regex pattern during initialization
-func Init() {
+func Init(logChannelId string) {
+	banLogChannelID = logChannelId
+
 	compiledRegex = make([]*regexp.Regexp, len(spamRegexPattern))
 	for i, pattern := range spamRegexPattern {
 		compiled, err := regexp.Compile(pattern)
@@ -89,11 +94,6 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Println("Failed to send delete message", err)
 			}
 
-			/*_, err := s.ChannelMessageSendReply(m.ChannelID, responseSpam, m.Reference())
-			if err != nil {
-				fmt.Println("Failed to send delete message", err)
-			}*/
-
 			// Delete spam chat from channel
 			err = s.ChannelMessageDelete(m.ChannelID, m.ID)
 			if err != nil {
@@ -117,6 +117,34 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 			} else {
 				fmt.Printf("User %s has beed banned for spamming\n", userName)
 
+				// Send log message to ban-log channel
+				logEmbed := &discordgo.MessageEmbed{
+					Title: "User Banned",
+					Color: 0xff0000,
+					Fields: []*discordgo.MessageEmbedField{
+						{
+							Name:   "Username",
+							Value:  m.Author.Username,
+							Inline: true,
+						},
+						{
+							Name:   "User ID",
+							Value:  m.Author.ID,
+							Inline: true,
+						},
+						{
+							Name:   "Reason",
+							Value:  responseSpam,
+							Inline: false,
+						},
+					},
+					Timestamp: time.Now().Format(time.RFC3339),
+				}
+
+				_, err := s.ChannelMessageSendEmbed(banLogChannelID, logEmbed)
+				if err != nil {
+					fmt.Printf("Failed to send log message: %v\n", err)
+				}
 			}
 			return
 		}
