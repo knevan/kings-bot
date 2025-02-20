@@ -3,13 +3,12 @@ package youtube
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"sync"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"google.golang.org/api/option"
@@ -17,14 +16,14 @@ import (
 )
 
 var (
-	channelID string
-	// discordChannel string
-	verifyToken   string
-	youtubeAPIKey string
+	// youtubeChannelID string
+	discordChannelID string
+	verifyToken      string
+	youtubeAPIKey    string
 
-	inMemoryCache       = make(map[string]time.Time)
-	cacheMutex          sync.Mutex
-	cacheExpirationTime = 8 * time.Hour
+	// inMemoryCache       = make(map[string]time.Time)
+	// cacheMutex          sync.Mutex
+	// cacheExpirationTime = 8 * time.Hour
 )
 
 // Notification XMLFeed Notification YoutubeNotification struct for xml payload from YouTube
@@ -40,12 +39,18 @@ type Entry struct {
 	VideoID   string `xml:"videoId"`
 	ChannelID string `xml:"channelId"`
 	Title     string `xml:"title"`
+	Link      struct {
+		Rel  string `xml:"rel,attr"`
+		Href string `xml:"href,attr"`
+	} `xml:"http://www.w3.org/2005/Atom link"`
+	Published string `xml:"published"`
+	Updated   string `xml:"updated"`
 }
 
 // Init initializes the YouTube module
-func Init(youtubeChannelID string, verifyTokenValue string, youtubeKey string) {
-	channelID = youtubeChannelID
-	// discordChannel = discordChannelID
+func Init(discordChannelId string, verifyTokenValue string, youtubeKey string) {
+	// youtubeChannelID = youtubeChannelId
+	discordChannelID = discordChannelId
 	verifyToken = verifyTokenValue
 	youtubeAPIKey = youtubeKey
 }
@@ -90,35 +95,55 @@ func HandleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.S
 
 		var notification Notification
 		if err := xml.Unmarshal(body, &notification); err != nil {
+			log.Printf("Error parsing XML notification: %v", err)
 			http.Error(w, "Error parsing XML youtube notification", http.StatusBadRequest)
+			return
 		}
 
+		log.Printf("Parsed Notification: %+v", notification)
 		log.Printf("Received YouTube notification: %+v", notification)
 
-		if !alreadyProcessedVideo(notification.Entry.VideoID) {
-			live, err := isLiveStream(notification.Entry.VideoID)
-			if err != nil {
-				log.Printf("Error checking live status: %v", err)
+		// if !alreadyProcessedVideo(notification.Entry.VideoID) {
+		live, err := isLiveStream(notification.Entry.VideoID)
+		if err != nil {
+			log.Printf("Error checking live status: %v", err)
+		}
+
+		if live {
+			// message := fmt.Sprintf("@everyone Damara is live! Watch here: %s", notification.Entry.Link.Href)
+			embed := &discordgo.MessageEmbed{
+				Title: notification.Entry.Title,
+				URL:   notification.Entry.Link.Href,
+				Color: 0xFF7A33,
+				Author: &discordgo.MessageEmbedAuthor{
+					Name: "Damara is live!",
+				},
+				Thumbnail: &discordgo.MessageEmbedThumbnail{
+					URL: fmt.Sprintf("https://img.youtube.com/vi/%s/maxresdefault.jpg", notification.Entry.VideoID),
+				},
 			}
 
-			if live {
-				message := fmt.Sprintf("@everyone %s is live! Watch here: https://www.youtube.com/watch?v=%s",
-					notification.Entry.Title, notification.Entry.VideoID)
-				_, err := s.ChannelMessageSend(channelID, message)
-				if err != nil {
-					log.Printf("Error sending Discord message: %v", err)
-				} else {
-					log.Printf("Sent Discord message: %s", notification.Entry.Title)
-					markVideoAsProcessed(notification.Entry.VideoID)
+			// log.Printf("Attempting to send Discord message to channel ID: %s, message: %s", discordChannelID, message)
+
+			_, err := s.ChannelMessageSendEmbed(discordChannelID, embed)
+			if err != nil {
+				log.Printf("Error sending Discord message: %v", err)
+				var restErr *discordgo.RESTError
+				if errors.As(err, &restErr) {
+					log.Printf("Discord API Error Code: %d, Message: %v", restErr.Response.StatusCode, restErr.Message)
 				}
 			} else {
-				log.Printf("Video %s is not a live, skipping notification.", notification.Entry.VideoID)
+				log.Printf("Sent Discord message: %s", notification.Entry.Title)
+				// markVideoAsProcessed(notification.Entry.VideoID)
 			}
 		} else {
-			log.Printf("Video %s has already been processed, skipping notification.", notification.Entry.VideoID)
+			log.Printf("Video %s is not a live, skipping notification.", notification.Entry.VideoID)
 		}
-		w.WriteHeader(http.StatusOK)
-	}
+	} /*else {
+		log.Printf("Video %s has already been processed, skipping notification.", notification.Entry.VideoID)
+	}*/
+	// }
+	// w.WriteHeader(http.StatusOK)
 }
 
 func isLiveStream(videoID string) (bool, error) {
@@ -136,14 +161,18 @@ func isLiveStream(videoID string) (bool, error) {
 	}
 
 	if len(resp.Items) == 0 {
-		return false, fmt.Errorf("video not found")
+		log.Printf("Video not found, assuming for test notification")
+		// return false, fmt.Errorf("video not found")
+		return true, nil
 	}
 
 	liveStatus := resp.Items[0].Snippet.LiveBroadcastContent
 	log.Printf("Live status for video: %s", liveStatus)
-	return liveStatus == "live", nil
+	// return liveStatus == "live", nil
+	return liveStatus == "live" || liveStatus == "none", nil
 }
 
+/*
 func alreadyProcessedVideo(videoID string) bool {
 	cacheMutex.Lock()
 	defer cacheMutex.Unlock()
@@ -161,10 +190,10 @@ func markVideoAsProcessed(videoID string) {
 	cacheMutex.Lock()
 	defer cacheMutex.Unlock()
 	inMemoryCache[videoID] = time.Now()
-}
+}*/
 
 func SubscribeYoutubeChannel(channelID string) error {
-	callbackURL := fmt.Sprintf("https://13f6-180-252-117-209.ngrok-free.app/youtube/webhook")
+	callbackURL := fmt.Sprintf("https://0226-180-252-117-209.ngrok-free.app/youtube/webhook")
 	topicURL := fmt.Sprintf("https://www.youtube.com/xml/feeds/videos.xml?channel_id=%s", channelID)
 
 	values := url.Values{}
