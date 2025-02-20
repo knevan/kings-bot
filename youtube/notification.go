@@ -110,22 +110,23 @@ func HandleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.S
 		}
 
 		if live {
-			// message := fmt.Sprintf("@everyone Damara is live! Watch here: %s", notification.Entry.Link.Href)
-			embed := &discordgo.MessageEmbed{
+			message := fmt.Sprintf("@everyone Damara is live! Watch here: %s", notification.Entry.Link.Href)
+			/*embed := &discordgo.MessageEmbed{
 				Title: notification.Entry.Title,
 				URL:   notification.Entry.Link.Href,
 				Color: 0xFF7A33,
 				Author: &discordgo.MessageEmbedAuthor{
 					Name: "Damara is live!",
+					URL:  notification.Entry.Link.Href,
 				},
 				Thumbnail: &discordgo.MessageEmbedThumbnail{
 					URL: fmt.Sprintf("https://img.youtube.com/vi/%s/maxresdefault.jpg", notification.Entry.VideoID),
 				},
-			}
+			}*/
 
-			// log.Printf("Attempting to send Discord message to channel ID: %s, message: %s", discordChannelID, message)
+			log.Printf("Attempting to send Discord message to channel ID: %s, message: %s", discordChannelID, message)
 
-			_, err := s.ChannelMessageSendEmbed(discordChannelID, embed)
+			_, err := s.ChannelMessageSend(discordChannelID, message)
 			if err != nil {
 				log.Printf("Error sending Discord message: %v", err)
 				var restErr *discordgo.RESTError
@@ -169,7 +170,16 @@ func isLiveStream(videoID string) (bool, error) {
 	liveStatus := resp.Items[0].Snippet.LiveBroadcastContent
 	log.Printf("Live status for video: %s", liveStatus)
 	// return liveStatus == "live", nil
-	return liveStatus == "live" || liveStatus == "none", nil
+	switch liveStatus {
+	case "live":
+		return true, nil
+	case "upcoming":
+		return false, nil
+	case "none":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown live status: %s", liveStatus)
+	}
 }
 
 /*
@@ -193,7 +203,7 @@ func markVideoAsProcessed(videoID string) {
 }*/
 
 func SubscribeYoutubeChannel(channelID string) error {
-	callbackURL := fmt.Sprintf("https://0226-180-252-117-209.ngrok-free.app/youtube/webhook")
+	callbackURL := fmt.Sprintf("https://99bc-180-252-117-209.ngrok-free.app/youtube/webhook")
 	topicURL := fmt.Sprintf("https://www.youtube.com/xml/feeds/videos.xml?channel_id=%s", channelID)
 
 	values := url.Values{}

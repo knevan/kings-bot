@@ -18,10 +18,11 @@ import (
 
 var (
 	Token            string
-	YoutubeChannelID string
-	DiscordChannelID string
 	VerifyToken      string
 	YoutubeAPIKey    string
+	YoutubeChannelID string
+	DiscordChannelID string
+	BanLogChannelID  string
 	Port             = "8080"
 )
 
@@ -61,7 +62,7 @@ func main() {
 	fmt.Println("Bot working")
 
 	// Initialize Youtube Module
-	youtube.Init(YoutubeChannelID, VerifyToken, YoutubeAPIKey)
+	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey)
 
 	// Setup http server for YouTube Webhook
 	http.HandleFunc("/youtube/webhook", func(w http.ResponseWriter, r *http.Request) {
