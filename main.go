@@ -39,6 +39,7 @@ func main() {
 	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
 	DiscordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
+	BanLogChannelID = os.Getenv("BAN_LOG_CHANNEL_ID")
 
 	// Discord bot Session
 	session, err := discordgo.New("Bot " + Token)
@@ -48,7 +49,7 @@ func main() {
 	}
 
 	// Initialize moderation module
-	antiscam.Init()
+	antiscam.Init(BanLogChannelID)
 
 	// Handler for Spam Message
 	session.AddHandler(antiscam.DeleteSpamMessage)
