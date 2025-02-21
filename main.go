@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"kings-bot/antiscam"
+	"kings-bot/moderation"
 	"kings-bot/youtube"
 )
 
@@ -48,12 +49,6 @@ func main() {
 		return
 	}
 
-	// Initialize moderation module
-	antiscam.Init(BanLogChannelID)
-
-	// Handler for Spam Message
-	session.AddHandler(antiscam.DeleteSpamMessage)
-
 	// Connecting bot with bot token
 	err = session.Open()
 	if err != nil {
@@ -61,6 +56,21 @@ func main() {
 		return
 	}
 	fmt.Println("Bot working")
+
+	// Initialize moderation module
+	antiscam.Init(BanLogChannelID)
+
+	// Handler for Spam Message
+	session.AddHandler(antiscam.DeleteSpamMessage)
+
+	// handler for Unban Slash Command
+	session.AddHandler(moderation.UnbanhandlerCommand)
+
+	// Register Unban Command
+	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", moderation.UnbanCommand)
+	if err != nil {
+		log.Fatalf("Error registering Unban Command: %v", err)
+	}
 
 	// Initialize Youtube Module
 	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey)
