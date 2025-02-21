@@ -1,2 +1,4 @@
 .idea
 .env
+dump-dir
+main_test.go
