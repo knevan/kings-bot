@@ -63,6 +63,9 @@ func main() {
 	// Handler for Spam Message
 	session.AddHandler(antiscam.DeleteSpamMessage)
 
+	// Handler for Ban Slash Command
+	session.AddHandler(moderation.BanhandlerCommand)
+
 	// handler for Unban Slash Command
 	session.AddHandler(moderation.UnbanhandlerCommand)
 
