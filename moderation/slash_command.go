@@ -97,8 +97,6 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-// Test
-
 var UnbanCommand = &discordgo.ApplicationCommand{
 	Name:        "unban",
 	Description: "Unban user",
