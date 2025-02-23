@@ -7,6 +7,11 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+var (
+	defaultPerms int64 = discordgo.PermissionBanMembers
+	defaultDM          = false
+)
+
 var UnbanCommand = &discordgo.ApplicationCommand{
 	Name:        "unban",
 	Description: "Unban user",
@@ -24,6 +29,8 @@ var UnbanCommand = &discordgo.ApplicationCommand{
 			Required:    true,
 		},
 	},
+	DefaultMemberPermissions: &defaultPerms,
+	DMPermission:             &defaultDM,
 }
 
 func UnbanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -89,7 +96,7 @@ func hasRequiredRole(s *discordgo.Session, guildID string, member *discordgo.Mem
 		if err != nil {
 			continue
 		}
-		if role.Name == "MOD" || role.Name == "Moderator" {
+		if role.Name == "MOD" {
 			return true
 		}
 	}
