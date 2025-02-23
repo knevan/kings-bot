@@ -9,6 +9,7 @@ import (
 
 var (
 	defaultPerms int64 = discordgo.PermissionBanMembers
+	defaultDM          = false
 )
 
 var UnbanCommand = &discordgo.ApplicationCommand{
@@ -29,6 +30,7 @@ var UnbanCommand = &discordgo.ApplicationCommand{
 		},
 	},
 	DefaultMemberPermissions: &defaultPerms,
+	DMPermission:             &defaultDM,
 }
 
 func UnbanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
