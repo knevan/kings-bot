@@ -15,12 +15,11 @@ var (
 	// Regex pattern for reducing false positive
 	spamRegexPattern = []string{
 		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)(?:\s*\+\s*|\s*-\s*|\s*)?(giveaway)\b`,
-		`(?i)\b(?:free|get|claim|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?)\b`,
-		`(?i)\b(?:gift|steam)(?:\s*\+\s*|\s*-\s*|\s*)?(?:cards?|\$50|50\$)\b`,
+		`(?i)\b(?:free|get|claim|steam|gifts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:steam|gifts?|keys?|cards?|\$50|50\$)\b`,
 		`(?i)\b(?:free|best|onlyfans|teen|NSFW|sex|leaks?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|NSFW|hub|onlyfans|teen|sex|leaks?)\b`,
 		`(?i)\b(?:free|hot|nudes?|hentai)(?:\s*\+\s*|\s*-\s*|\s*)?(?:porn|pussys?|nudes?)\b`,
 		`(?i)\b(?:stake|airdrop|claim|rewards?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:stake|airdrop|claim|rewards?)\b`,
-		`(?i)\b(?:nitro)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway)`,
+		`(?i)\b(?:nitro|free)(?:\s*\+\s*|\s*-\s*|\s*)?(?:nitro|giveaway)`,
 		`(?i)\b(?:crypto|casino|fasts?)(?:\s*\+\s*|\s*-\s*|\s*)?(?:giveaway|payouts?|luck|catch)\b`,
 	}
 	// Slice to store regex pattern
