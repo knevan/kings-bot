@@ -65,15 +65,9 @@ func main() {
 
 	// Handler for Slash Command
 	session.AddHandler(moderation.UnbanhandlerCommand)
-	session.AddHandler(moderation.BanhandlerCommand)
 
 	// Register unban command
 	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", moderation.UnbanCommand)
-	if err != nil {
-		log.Printf("Error creating unban command: %v", err)
-	}
-
-	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", moderation.BanCommand)
 	if err != nil {
 		log.Printf("Error creating unban command: %v", err)
 	}

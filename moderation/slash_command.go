@@ -7,95 +7,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var BanCommand = &discordgo.ApplicationCommand{
-	Name:        "ban",
-	Description: "Ban User",
-	Options: []*discordgo.ApplicationCommandOption{
-		{
-			Type:         discordgo.ApplicationCommandOptionUser,
-			Name:         "user",
-			Description:  "Insert User ID",
-			Required:     true,
-			Autocomplete: true,
-		},
-		{
-			Type:        discordgo.ApplicationCommandOptionString,
-			Name:        "reason",
-			Description: "Insert Reason",
-			Required:    true,
-		},
-		{
-			Type:        discordgo.ApplicationCommandOptionInteger,
-			Name:        "duration",
-			Description: "Insert Duration (in seconds)",
-			Required:    false,
-			MinValue:    &[]float64{0}[0],
-			MaxValue:    7,
-		},
-	},
-}
-
-func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if !hasRequiredRole(s, i.GuildID, i.Member) {
-		respondWithError(s, i, "You dont have permission to use this command")
-		return
-	}
-
-	options := i.ApplicationCommandData().Options
-	user := options[0].UserValue(s)
-	reason := options[1].StringValue()
-	deleteDays := 0
-
-	if len(options) > 2 {
-		deleteDays = int(options[2].IntValue())
-	}
-
-	err := s.GuildBanCreateWithReason(i.GuildID, user.ID, reason, deleteDays)
-	if err != nil {
-		respondWithError(s, i, fmt.Sprintf("Failed to ban user: %v", err))
-		return
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: "User Banned",
-		Color: 0xFF0000,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "User",
-				Value:  user.Username + "#" + user.Discriminator,
-				Inline: true,
-			},
-			{
-				Name:   "Banned By",
-				Value:  i.Member.User.Username,
-				Inline: true,
-			},
-			{
-				Name:   "Reason",
-				Value:  reason,
-				Inline: false,
-			},
-			{
-				Name:   "Duration",
-				Value:  fmt.Sprintf("%d days", deleteDays),
-				Inline: true,
-			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: "User Banned",
-		},
-	}
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
-	})
-	if err != nil {
-		return
-	}
-}
+var (
+	defaultPerms int64 = discordgo.PermissionBanMembers
+)
 
 var UnbanCommand = &discordgo.ApplicationCommand{
 	Name:        "unban",
@@ -114,6 +28,7 @@ var UnbanCommand = &discordgo.ApplicationCommand{
 			Required:    true,
 		},
 	},
+	DefaultMemberPermissions: &defaultPerms,
 }
 
 func UnbanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -179,7 +94,7 @@ func hasRequiredRole(s *discordgo.Session, guildID string, member *discordgo.Mem
 		if err != nil {
 			continue
 		}
-		if role.Name == "MOD" || role.Name == "Moderator" {
+		if role.Name == "MOD" {
 			return true
 		}
 	}
