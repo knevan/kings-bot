@@ -12,14 +12,24 @@ permissions:
   pull-requests: read
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/checkout@v4
+      - name: go build
+        run: go build -v ./...
+
   golangci:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+      - uses: actions/checkout@v4
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
