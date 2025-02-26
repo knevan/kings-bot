@@ -13,7 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"kings-bot/antiscam"
-	"kings-bot/moderation"
+	"kings-bot/slashcommands"
 	"kings-bot/youtube"
 )
 
@@ -24,7 +24,10 @@ var (
 	YoutubeChannelID string
 	DiscordChannelID string
 	BanLogChannelID  string
-	Port             = "8080"
+	KingKongRoleID   string
+
+	// Port Server for running the server
+	Port = "8080"
 )
 
 func main() {
@@ -41,6 +44,7 @@ func main() {
 	DiscordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
 	BanLogChannelID = os.Getenv("BAN_LOG_CHANNEL_ID")
+	KingKongRoleID = os.Getenv("ROLE_KINGKONG_ID")
 
 	// Discord bot Session
 	session, err := discordgo.New("Bot " + Token)
@@ -56,24 +60,22 @@ func main() {
 		return
 	}
 	fmt.Println("Bot working")
-
-	// Initialize moderation module
+	// Initialize slashcommands module
 	antiscam.Init(BanLogChannelID)
 
 	// Handler for Spam Message
 	session.AddHandler(antiscam.DeleteSpamMessage)
 
 	// Handler for Slash Command
-	session.AddHandler(moderation.UnbanhandlerCommand)
-
+	session.AddHandler(slashcommands.UnbanhandlerCommand)
 	// Register unban command
-	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", moderation.UnbanCommand)
+	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", slashcommands.UnbanCommand)
 	if err != nil {
 		log.Printf("Error creating unban command: %v", err)
 	}
 
 	// Initialize Youtube Module
-	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey)
+	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey, KingKongRoleID)
 
 	// Setup http server for YouTube Webhook
 	http.HandleFunc("/youtube/webhook", func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +109,7 @@ func main() {
 
 	// Kill discord bot
 	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
 	// Cleanup and Close bot session
