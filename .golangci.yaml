@@ -8,5 +8,5 @@ linters:
     - gosimple
     - govet
     - bodyclose
-    - goimports
     - ineffassign
+    - goimports
