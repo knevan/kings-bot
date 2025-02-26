@@ -20,6 +20,7 @@ var (
 	discordChannelID string
 	verifyToken      string
 	youtubeAPIKey    string
+	kingKongRoleID   string
 
 	// inMemoryCache       = make(map[string]time.Time)
 	// cacheMutex          sync.Mutex
@@ -48,11 +49,12 @@ type Entry struct {
 }
 
 // Init initializes the YouTube module
-func Init(discordChannelId string, verifyTokenValue string, youtubeKey string) {
+func Init(discordChannelId string, verifyTokenValue string, youtubeKey string, kingkongRole string) {
 	// youtubeChannelID = youtubeChannelId
 	discordChannelID = discordChannelId
 	verifyToken = verifyTokenValue
 	youtubeAPIKey = youtubeKey
+	kingKongRoleID = kingkongRole
 }
 
 // HandleYoutubeWebhook Handle Webhook
@@ -110,21 +112,10 @@ func HandleYoutubeWebhook(w http.ResponseWriter, r *http.Request, s *discordgo.S
 		}
 
 		if live {
-			message := fmt.Sprintf("@everyone Damara is live! Watch here: %s", notification.Entry.Link.Href)
-			/*embed := &discordgo.MessageEmbed{
-				Title: notification.Entry.Title,
-				URL:   notification.Entry.Link.Href,
-				Color: 0xFF7A33,
-				Author: &discordgo.MessageEmbedAuthor{
-					Name: "Damara is live!",
-					URL:  notification.Entry.Link.Href,
-				},
-				Thumbnail: &discordgo.MessageEmbedThumbnail{
-					URL: fmt.Sprintf("https://img.youtube.com/vi/%s/maxresdefault.jpg", notification.Entry.VideoID),
-				},
-			}*/
+			message := fmt.Sprintf("<@&%s> @everyone Damara Live! Watch and Give Like: %s",
+				kingKongRoleID, notification.Entry.Link.Href)
 
-			log.Printf("Attempting to send Discord message to channel ID: %s, message: %s", discordChannelID, message)
+			log.Printf("Attempting to send Discord message to channel ID: %s,message: %s", discordChannelID, message)
 
 			_, err := s.ChannelMessageSend(discordChannelID, message)
 			if err != nil {
@@ -176,7 +167,7 @@ func isLiveStream(videoID string) (bool, error) {
 	case "upcoming":
 		return false, nil
 	case "none":
-		return false, nil
+		return true, nil
 	default:
 		return false, fmt.Errorf("unknown live status: %s", liveStatus)
 	}
@@ -203,7 +194,7 @@ func markVideoAsProcessed(videoID string) {
 }*/
 
 func SubscribeYoutubeChannel(channelID string) error {
-	callbackURL := fmt.Sprintf("https://99bc-180-252-117-209.ngrok-free.app/youtube/webhook")
+	callbackURL := fmt.Sprintf("https://afb5-180-252-117-209.ngrok-free.app/youtube/webhook")
 	topicURL := fmt.Sprintf("https://www.youtube.com/xml/feeds/videos.xml?channel_id=%s", channelID)
 
 	values := url.Values{}
