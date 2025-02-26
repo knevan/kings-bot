@@ -60,18 +60,34 @@ func main() {
 		return
 	}
 	fmt.Println("Bot working")
-	// Initialize slashcommands module
-	antiscam.Init(BanLogChannelID)
 
+	// Initialize antiscam init module
+	antiscam.Init(BanLogChannelID)
 	// Handler for Spam Message
 	session.AddHandler(antiscam.DeleteSpamMessage)
 
-	// Handler for Slash Command
-	session.AddHandler(slashcommands.UnbanhandlerCommand)
-	// Register unban command
+	// Initialize slashcommands init module
+	slashcommands.Init(BanLogChannelID)
+	// Handler for Slash Commands
+	session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if i.Type == discordgo.InteractionApplicationCommand {
+			switch i.ApplicationCommandData().Name {
+			case "unban":
+				slashcommands.UnbanhandlerCommand(s, i)
+			case "ban":
+				slashcommands.BanhandlerCommand(s, i)
+			}
+		}
+	})
+
 	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", slashcommands.UnbanCommand)
 	if err != nil {
 		log.Printf("Error creating unban command: %v", err)
+	}
+
+	_, err = session.ApplicationCommandCreate(session.State.User.ID, "", slashcommands.BanCommand)
+	if err != nil {
+		log.Printf("Error creating ban command: %v", err)
 	}
 
 	// Initialize Youtube Module
