@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"kings-bot/antiscam"
+	"kings-bot/db"
 	"kings-bot/slashcommands"
 	"kings-bot/youtube"
 )
@@ -45,6 +46,12 @@ func main() {
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
 	BanLogChannelID = os.Getenv("BAN_LOG_CHANNEL_ID")
 	KingKongRoleID = os.Getenv("ROLE_KINGKONG_ID")
+
+	// Initialize Database
+	err = db.InitDB()
+	if err != nil {
+		log.Fatalf("Error initilizing database: %v", err)
+	}
 
 	// Discord bot Session
 	session, err := discordgo.New("Bot " + Token)
@@ -90,6 +97,9 @@ func main() {
 		log.Printf("Error creating ban command: %v", err)
 	}
 
+	// Start database ban ticker
+	go banDatabaseTicker(session)
+
 	// Initialize Youtube Module
 	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey, KingKongRoleID)
 
@@ -132,5 +142,25 @@ func main() {
 	err = session.Close()
 	if err != nil {
 		log.Println("Cant kill discord")
+	}
+}
+
+func banDatabaseTicker(s *discordgo.Session) {
+	ticker := time.NewTicker(2 * time.Minute)
+	for range ticker.C {
+		expiredBans, err := db.GetExpiredBans()
+		if err != nil {
+			log.Printf("Error getting expired bans: %v", err)
+			continue
+		}
+		for _, ban := range expiredBans {
+			err := s.GuildBanDelete(ban.GuildID, ban.UserID)
+			if err != nil {
+				log.Printf("Error unbanning user %s from guild %s: %v", ban.UserID, ban.GuildID, err)
+			} else {
+				log.Printf("Unbanned user %s from guild %s", ban.UserID, ban.GuildID)
+			}
+			db.RemoveTempBans(ban.UserID)
+		}
 	}
 }
