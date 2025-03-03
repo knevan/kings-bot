@@ -160,7 +160,10 @@ func banDatabaseTicker(s *discordgo.Session) {
 			} else {
 				log.Printf("Unbanned user %s from guild %s", ban.UserID, ban.GuildID)
 			}
-			db.RemoveTempBans(ban.UserID)
+			err = db.RemoveTempBans(ban.UserID)
+			if err != nil {
+				log.Printf("Error removing temporary ban for user %s: %v", ban.UserID, err)
+			}
 		}
 	}
 }
