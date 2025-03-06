@@ -110,7 +110,7 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 
 			// Banned spam user from server
-			err = s.GuildBanCreateWithReason(m.GuildID, m.Author.ID, "spamming detected", 0)
+			err = s.GuildBanCreateWithReason(m.GuildID, m.Author.ID, "spamming detected", 7)
 			if err != nil {
 				fmt.Printf("Error when banning user %s: %v\n\n", userName, err)
 			} else {
