@@ -19,13 +19,15 @@ import (
 )
 
 var (
-	Token            string
-	VerifyToken      string
-	YoutubeAPIKey    string
-	YoutubeChannelID string
-	DiscordChannelID string
-	BanLogChannelID  string
-	KingKongRoleID   string
+	Token                        string
+	VerifyToken                  string
+	YoutubeAPIKey                string
+	GuildID                      string
+	YoutubeChannelID             string
+	YoutubeNotificationChannelID string
+	TicketCategoryID             string
+	BanLogChannelID              string
+	KingKongRoleID               string
 
 	// Port Server for running the server
 	Port = "8080"
@@ -41,9 +43,11 @@ func main() {
 	// Get Token from .env file
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
 	YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
-	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
-	DiscordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
+	GuildID = os.Getenv("GUILD_ID")
+	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
+	YoutubeNotificationChannelID = os.Getenv("YOUTUBE_NOTIFICATION_CHANNEL_ID")
+	TicketCategoryID = os.Getenv("TICKET_CATEGORY_ID")
 	BanLogChannelID = os.Getenv("BAN_LOG_CHANNEL_ID")
 	KingKongRoleID = os.Getenv("ROLE_KINGKONG_ID")
 
@@ -70,14 +74,17 @@ func main() {
 
 	// Initialize antiscam init module
 	antiscam.Init(BanLogChannelID)
+
 	// Handler for Spam Message
 	session.AddHandler(antiscam.DeleteSpamMessage)
 
 	// Initialize slashcommands init module
-	slashcommands.Init(BanLogChannelID)
+	slashcommands.InitBan(BanLogChannelID)
+
 	// Handler for Slash Commands
 	session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if i.Type == discordgo.InteractionApplicationCommand {
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
 			switch i.ApplicationCommandData().Name {
 			case "unban":
 				slashcommands.UnbanhandlerCommand(s, i)
@@ -101,7 +108,7 @@ func main() {
 	go banDatabaseTicker(session)
 
 	// Initialize Youtube Module
-	youtube.Init(DiscordChannelID, VerifyToken, YoutubeAPIKey, KingKongRoleID)
+	youtube.Init(YoutubeNotificationChannelID, VerifyToken, YoutubeAPIKey, KingKongRoleID)
 
 	// Setup http server for YouTube Webhook
 	http.HandleFunc("/youtube/webhook", func(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +152,7 @@ func main() {
 	}
 }
 
+// Function to check database ban status and unban if time is up
 func banDatabaseTicker(s *discordgo.Session) {
 	ticker := time.NewTicker(2 * time.Minute)
 	for range ticker.C {
