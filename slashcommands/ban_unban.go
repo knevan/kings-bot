@@ -12,9 +12,9 @@ import (
 
 // variable used across the package
 var (
+	banLogChannelID string
 	defaultPerms    int64 = discordgo.PermissionBanMembers // Minimum permission required
 	defaultDM             = false                          // disable command in DM
-	banLogChannelID string
 )
 
 // UnbanCommand : Represents the Discord application command for unban functionality
@@ -39,11 +39,6 @@ var UnbanCommand = &discordgo.ApplicationCommand{
 	DMPermission:             &defaultDM,    // Disable command in DM
 }
 
-// Init the ban log channel
-func Init(logChannelID string) {
-	banLogChannelID = logChannelID
-}
-
 // UnbanhandlerCommand : Handle the unban command invoke by user
 func UnbanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Check permission or required role
@@ -52,7 +47,6 @@ func UnbanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Extract command option
 	options := i.ApplicationCommandData().Options
 	userID := options[0].StringValue()
 	reason := options[1].StringValue()
@@ -174,22 +168,27 @@ var BanCommand = &discordgo.ApplicationCommand{
 			MaxValue:    720,              // Max 30D ban
 		},
 		{
+			Type:        discordgo.ApplicationCommandOptionInteger,
+			Name:        "delmsg",
+			Description: "Delete old message (0-7)",
+			Required:    true,
+			MinValue:    &[]float64{0}[0],
+			MaxValue:    7,
+		},
+		{
 			Type:        discordgo.ApplicationCommandOptionString,
 			Name:        "reason",
 			Description: "Insert Reason",
 			Required:    false,
 		},
-		{
-			Type:        discordgo.ApplicationCommandOptionInteger,
-			Name:        "delmsg",
-			Description: "Delete old message (0-7)",
-			Required:    false,
-			MinValue:    &[]float64{0}[0],
-			MaxValue:    7,
-		},
 	},
 	DefaultMemberPermissions: &defaultPerms, // Require ban permission role
 	DMPermission:             &defaultDM,    // Disable command in DM
+}
+
+// InitBan Init the ban log channel
+func InitBan(logChannelID string) {
+	banLogChannelID = logChannelID
 }
 
 // Fetch banned user information (username)
@@ -208,15 +207,13 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
 	userID := options[0].StringValue()
 	banDurationHours := options[1].IntValue()
+	deleteMsgDays := int(options[2].IntValue())
 
 	var reason string
-	if len(options) > 2 {
-		reason = options[2].StringValue()
-	}
-
-	var deleteMsgDays int
 	if len(options) > 3 {
-		deleteMsgDays = int(options[3].IntValue())
+		reason = options[3].StringValue()
+	} else {
+		reason = "No reason provided"
 	}
 
 	// Calculate number of days
