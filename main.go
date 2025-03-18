@@ -22,10 +22,8 @@ var (
 	Token                        string
 	VerifyToken                  string
 	YoutubeAPIKey                string
-	GuildID                      string
 	YoutubeChannelID             string
 	YoutubeNotificationChannelID string
-	TicketCategoryID             string
 	BanLogChannelID              string
 	KingKongRoleID               string
 
@@ -44,10 +42,8 @@ func main() {
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
 	YoutubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
 	VerifyToken = os.Getenv("VERIFY_TOKEN")
-	GuildID = os.Getenv("GUILD_ID")
 	YoutubeChannelID = os.Getenv("YOUTUBE_CHANNEL_ID")
 	YoutubeNotificationChannelID = os.Getenv("YOUTUBE_NOTIFICATION_CHANNEL_ID")
-	TicketCategoryID = os.Getenv("TICKET_CATEGORY_ID")
 	BanLogChannelID = os.Getenv("BAN_LOG_CHANNEL_ID")
 	KingKongRoleID = os.Getenv("ROLE_KINGKONG_ID")
 
@@ -154,7 +150,7 @@ func main() {
 
 // Function to check database ban status and unban if time is up
 func banDatabaseTicker(s *discordgo.Session) {
-	ticker := time.NewTicker(2 * time.Minute)
+	ticker := time.NewTicker(3 * time.Minute)
 	for range ticker.C {
 		expiredBans, err := db.GetExpiredBans()
 		if err != nil {
