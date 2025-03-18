@@ -210,28 +210,14 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	deleteMsgDays := int(options[2].IntValue())
 
 	var reason string
-	if len(options) > 3 {
+	if len(options) > 3 && options[3].StringValue() != "" {
 		reason = options[3].StringValue()
 	} else {
 		reason = "No reason provided"
 	}
 
 	// Calculate number of days
-	banDuration := time.Duration(banDurationHours) * time.Minute
-
-	// Ban the user
-	err := s.GuildBanCreateWithReason(i.GuildID, userID, reason, deleteMsgDays)
-	if err != nil {
-		respondWithError(s, i, fmt.Sprintf("Failed to ban user: %v", err))
-		return
-	}
-
-	if banDurationHours > 0 {
-		err = db.AddTempBan(userID, i.GuildID, i.Member.User.ID, banDuration, reason)
-		if err != nil {
-			log.Printf("Error adding temporary ban to database: %v", err)
-		}
-	}
+	banDuration := time.Duration(banDurationHours) * time.Hour
 
 	// Determine ban duration string
 	var durationString string
@@ -241,11 +227,36 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		durationString = fmt.Sprintf("%d Hours", banDurationHours)
 	}
 
+	// Calculate ban end time
+	var banEndTime time.Time
+	if banDurationHours > 0 {
+		banEndTime = time.Now().Add(banDuration)
+	}
+	banUnixTime := banEndTime.Unix()
+
+	// Send DM message to banned user
+	sendDMMessage(s, i, userID, banDurationHours, reason, banUnixTime)
+
 	// Fetch banned username for log message
 	bannedUsername, err := getBannedUserInfo(s, userID)
 	if err != nil {
 		respondWithError(s, i, fmt.Sprintf("Failed to retrieve banned user info: %v", err))
 		return
+	}
+
+	// Ban the user from server
+	err = s.GuildBanCreateWithReason(i.GuildID, userID, reason, deleteMsgDays)
+	if err != nil {
+		respondWithError(s, i, fmt.Sprintf("Failed to ban user: %v", err))
+		return
+	}
+
+	// Add temporary ban to database to track timed bans
+	if banDurationHours > 0 {
+		err = db.AddTempBan(userID, i.GuildID, i.Member.User.ID, banDuration, reason)
+		if err != nil {
+			log.Printf("Error adding temporary ban to database: %v", err)
+		}
 	}
 
 	// Create ember for log message
@@ -275,7 +286,7 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 			{
 				Name:   "Duration",
-				Value:  durationString,
+				Value:  fmt.Sprintf("%s, <t:%d:R>", durationString, banEndTime.Unix()),
 				Inline: true,
 			},
 		},
@@ -289,8 +300,16 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Send ban confirmation message to user
-	message := fmt.Sprintf("User %s banned for %s. Reason: %s", userID, durationString, reason)
+	// Send ban confirmation message to channel
+	var message string
+	if banDurationHours > 0 {
+		message = fmt.Sprintf("User %s has been banned for <t:%d:R>. Reason: %s",
+			bannedUsername.Username, banUnixTime, reason)
+	} else {
+		message = fmt.Sprintf("User %s has been banned permanently. Reason: %s",
+			bannedUsername.Username, reason)
+	}
+
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -299,5 +318,65 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 	if err != nil {
 		respondWithError(s, i, fmt.Sprintf("Failed to send message: %v", err))
+	}
+}
+
+func sendDMMessage(s *discordgo.Session, i *discordgo.InteractionCreate, userID string, banDurationHours int64, reason string, banUnixTime int64) {
+	// Create a single-use, never-expiring dicord invite link
+	invite, err := s.ChannelInviteCreate(i.ChannelID, discordgo.Invite{
+		MaxAge:    0,
+		MaxUses:   1,
+		Temporary: false,
+	})
+	if err != nil {
+		log.Printf("Error creating Discord invite: %v", err)
+	}
+
+	// Create DM Embed Message for Temporary Ban
+	var dmEmbed *discordgo.MessageEmbed
+	if banDurationHours > 0 {
+		dmEmbed = &discordgo.MessageEmbed{
+			Title: "You have been **Temporarily** banned from KinG server",
+			Description: fmt.Sprintf("You have been banned until <t:%d:F> <t:%d:R> due to Spamming and Compromissed Account. \n \n"+
+				"If you have gained access and secured your account, you can rejoin after the ban period using this one time invite link:", banUnixTime, banUnixTime),
+			Color: 0xff0000,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:  "Reason",
+					Value: reason,
+				},
+			},
+		}
+	} else {
+		dmEmbed = &discordgo.MessageEmbed{
+			Title:       "You have been **Permanently** banned from KinG server",
+			Description: "You have been permanently due to Spamming and Compromissed Account.",
+			Color:       0xff0000,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:  "Reason",
+					Value: reason,
+				},
+			},
+		}
+	}
+
+	// Send DM message to banned user
+	dmChannel, err := s.UserChannelCreate(userID)
+	if err != nil {
+		log.Printf("Error creating DM channel for banned user: %v", err)
+	} else {
+		_, err = s.ChannelMessageSendEmbed(dmChannel.ID, dmEmbed)
+		if err != nil {
+			log.Printf("Failed to send DM message to banned user: %v", err)
+		}
+
+		if banDurationHours > 0 && invite != nil {
+			inviteMessage := fmt.Sprintf("https://discord.gg/%s", invite.Code)
+			_, err = s.ChannelMessageSend(dmChannel.ID, inviteMessage)
+			if err != nil {
+				log.Printf("Failed to send invite message to DM channel: %v", err)
+			}
+		}
 	}
 }
