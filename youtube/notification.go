@@ -195,7 +195,7 @@ func markVideoAsProcessed(videoID string) {
 }
 
 func SubscribeYoutubeChannel(channelID string) error {
-	callbackURL := fmt.Sprintf("https://afb5-180-252-117-209.ngrok-free.app/youtube/webhook")
+	callbackURL := "https://afb5-180-252-117-209.ngrok-free.app/youtube/webhook"
 	topicURL := fmt.Sprintf("https://www.youtube.com/xml/feeds/videos.xml?channel_id=%s", channelID)
 
 	values := url.Values{}
