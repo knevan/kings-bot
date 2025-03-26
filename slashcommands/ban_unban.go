@@ -261,8 +261,11 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Create ember for log message
 	logEmbed := &discordgo.MessageEmbed{
-		Title: "User Banned by MOD",
+		Title: "User Banned by MOD from KinG Server",
 		Color: 0xff0000,
+		Thumbnail: &discordgo.MessageEmbedThumbnail{
+			URL: bannedUsername.AvatarURL(""),
+		},
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:   "Username",
@@ -321,6 +324,7 @@ func BanhandlerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
+// Send DirectMessage to Banned User
 func sendDMMessage(s *discordgo.Session, i *discordgo.InteractionCreate, userID string, banDurationHours int64, reason string, banUnixTime int64) {
 	// Create a single-use, never-expiring dicord invite link
 	invite, err := s.ChannelInviteCreate(i.ChannelID, discordgo.Invite{

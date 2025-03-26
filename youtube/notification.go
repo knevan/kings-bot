@@ -26,7 +26,7 @@ var (
 
 	inMemoryCache       = make(map[string]time.Time)
 	cacheMutex          sync.Mutex
-	cacheExpirationTime = 1 * time.Minute
+	cacheExpirationTime = 8 * time.Hour
 )
 
 // Notification XMLFeed Notification YoutubeNotification struct for xml payload from YouTube

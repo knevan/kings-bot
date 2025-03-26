@@ -12,7 +12,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 
-	"kings-bot/antiscam"
+	"kings-bot/automod"
 	"kings-bot/db"
 	"kings-bot/slashcommands"
 	"kings-bot/youtube"
@@ -69,10 +69,12 @@ func main() {
 	fmt.Println("Bot working")
 
 	// Initialize antiscam init module
-	antiscam.Init(BanLogChannelID)
+	automod.Init(BanLogChannelID)
 
+	// Handler for Rapid Message
+	session.AddHandler(automod.CheckRapidMessages)
 	// Handler for Spam Message
-	session.AddHandler(antiscam.DeleteSpamMessage)
+	session.AddHandler(automod.DeleteSpamMessage)
 
 	// Initialize slashcommands init module
 	slashcommands.InitBan(BanLogChannelID)
@@ -150,7 +152,7 @@ func main() {
 
 // Function to check database ban status and unban if time is up
 func banDatabaseTicker(s *discordgo.Session) {
-	ticker := time.NewTicker(3 * time.Minute)
+	ticker := time.NewTicker(2 * time.Minute)
 	for range ticker.C {
 		expiredBans, err := db.GetExpiredBans()
 		if err != nil {
