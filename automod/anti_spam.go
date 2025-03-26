@@ -1,4 +1,4 @@
-package antiscam
+package automod
 
 import (
 	"fmt"
@@ -42,6 +42,7 @@ func Init(logChannelId string) {
 	}
 }
 
+// DeleteSpamMessage Function to delete spam message from the channel
 func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
@@ -59,12 +60,11 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 			matchedWord := m.Content
 
 			// Reply and Response spam chat with reason why
-			responseSpam := fmt.Sprintf("**%s**", matchedWord)
+			responseSpam := matchedWord
 
 			// Embed message for simplicity and better view
 			embed := &discordgo.MessageEmbed{
 				Title: "Spam Message Detected",
-				// Description: responseSpam,
 				Color: 0xff0000,
 				Fields: []*discordgo.MessageEmbedField{
 					{
@@ -74,7 +74,7 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 					},
 					{
 						Name:   "Reason",
-						Value:  responseSpam,
+						Value:  fmt.Sprintf("```%s```", responseSpam),
 						Inline: false,
 					},
 				},
@@ -112,56 +112,12 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 
 			// Calculate the ban end time based on Unix timestamp
-			banDuration := 3 * time.Minute
+			banDuration := 2 * time.Minute
 			banEndTime := time.Now().Add(banDuration)
 			banUnixTime := banEndTime.Unix()
 
-			// Create a single-use, never-expiring discord invite link
-			invite, err := s.ChannelInviteCreate(m.ChannelID, discordgo.Invite{
-				MaxAge:    0,
-				MaxUses:   1,
-				Temporary: false,
-			})
-			if err != nil {
-				fmt.Printf("Error creating invite: %v", err)
-			}
-
-			// Create Embed Message for Direct Message
-			dmEmbed := &discordgo.MessageEmbed{
-				Title: "You have been banned from the KinG Server",
-				Description: fmt.Sprintf("You have been banned until <t:%d:F> <t:%d:R> due to Spamming and Compromissed Account. \n \n"+
-					"If you have gained access and secured your account, you can rejoin after the ban period using this one time invite link:", banUnixTime, banUnixTime),
-				Color: 0xff0000,
-				Fields: []*discordgo.MessageEmbedField{
-					{
-						Name:  "Reason",
-						Value: responseSpam,
-					},
-				},
-			}
-
-			// Send DM to banned user
-			dmChannel, err := s.UserChannelCreate(m.Author.ID)
-			if err != nil {
-				log.Printf("Failed to send DM to banned user: %v", err)
-			} else if dmChannel == nil {
-				log.Printf("dmChannel is nil unexpectedly")
-			} else {
-				// Send DM Embed Message
-				_, err = s.ChannelMessageSendEmbed(dmChannel.ID, dmEmbed)
-				if err != nil {
-					fmt.Printf("Failed to send DM: %v", err)
-					return
-				}
-
-				// Send DM invite link
-				inviteMessage := fmt.Sprintf("https://discord.gg/%s", invite.Code)
-				_, err = s.ChannelMessageSend(dmChannel.ID, inviteMessage)
-				if err != nil {
-					fmt.Printf("Failed to send invite link: %v", err)
-					return
-				}
-			}
+			// Send Direct Message to Banned User
+			sendDirectMessage(s, m, responseSpam, banUnixTime)
 
 			// Banned spam user from server
 			reasonBan := "Spamming detected"
@@ -177,36 +133,94 @@ func DeleteSpamMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 					log.Printf("Error adding temporary ban to database: %v", err)
 				}
 
-				// Send log message to ban-log channel
-				logEmbed := &discordgo.MessageEmbed{
-					Title: "User Banned",
-					Color: 0xff0000,
-					Fields: []*discordgo.MessageEmbedField{
-						{
-							Name:   "Username",
-							Value:  m.Author.Username,
-							Inline: true,
-						},
-						{
-							Name:   "User ID",
-							Value:  m.Author.ID,
-							Inline: true,
-						},
-						{
-							Name:   "Reason",
-							Value:  responseSpam,
-							Inline: false,
-						},
-					},
-					Timestamp: time.Now().Format(time.RFC3339),
-				}
-
-				_, err := s.ChannelMessageSendEmbed(banLogChannelID, logEmbed)
-				if err != nil {
-					fmt.Printf("Failed to send log message: %v\n", err)
-				}
+				// Send ban log message to specific channel
+				sendBanLogMessage(s, m, responseSpam)
 			}
 			return
 		}
+	}
+}
+
+// Function to send Direct Message to Banned User
+func sendDirectMessage(s *discordgo.Session, m *discordgo.MessageCreate, responseSpam string, banUnixTime int64) {
+	// Create a single-use, never-expiring discord invite link
+	invite, err := s.ChannelInviteCreate(m.ChannelID, discordgo.Invite{
+		MaxAge:    0,
+		MaxUses:   1,
+		Temporary: false,
+	})
+	if err != nil {
+		fmt.Printf("Error creating invite: %v", err)
+	}
+
+	// Create Embed Message for Direct Message
+	dmEmbed := &discordgo.MessageEmbed{
+		Title: "You have been banned from the KinG Server",
+		Description: fmt.Sprintf("You have been banned until <t:%d:F> <t:%d:R> due to Spamming and Compromissed Account. \n \n"+
+			"If you have gained access and secured your account, you can rejoin after the ban period using this one time invite link:", banUnixTime, banUnixTime),
+		Color: 0xff0000,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:  "Reason",
+				Value: fmt.Sprintf("```%s```", responseSpam),
+			},
+		},
+	}
+
+	// Send DM to banned user
+	dmChannel, err := s.UserChannelCreate(m.Author.ID)
+	if err != nil {
+		log.Printf("Failed to send DM to banned user: %v", err)
+	} else if dmChannel == nil {
+		log.Printf("dmChannel is nil unexpectedly")
+	} else {
+		// Send DM Embed Message
+		_, err = s.ChannelMessageSendEmbed(dmChannel.ID, dmEmbed)
+		if err != nil {
+			fmt.Printf("Failed to send DM: %v", err)
+			return
+		}
+
+		// Send DM invite link
+		inviteMessage := fmt.Sprintf("https://discord.gg/%s", invite.Code)
+		_, err = s.ChannelMessageSend(dmChannel.ID, inviteMessage)
+		if err != nil {
+			fmt.Printf("Failed to send invite link: %v", err)
+			return
+		}
+	}
+}
+
+// Function to send log banned message to ban-log channel
+func sendBanLogMessage(s *discordgo.Session, m *discordgo.MessageCreate, responseSpam string) {
+	logEmbed := &discordgo.MessageEmbed{
+		Title: "User Banned",
+		Color: 0xff0000,
+		Thumbnail: &discordgo.MessageEmbedThumbnail{
+			URL: m.Author.AvatarURL(""),
+		},
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Username",
+				Value:  fmt.Sprintf("%s %s", m.Author.Mention(), m.Author.Username),
+				Inline: true,
+			},
+			{
+				Name:   "User ID",
+				Value:  m.Author.ID,
+				Inline: true,
+			},
+			{
+				Name:   "Reason",
+				Value:  fmt.Sprintf("```%s```", responseSpam),
+				Inline: false,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err := s.ChannelMessageSendEmbed(banLogChannelID, logEmbed)
+	if err != nil {
+		fmt.Printf("Failed to send log message: %v\n", err)
 	}
 }
